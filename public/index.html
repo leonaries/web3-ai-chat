@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#9333ea" />
+    <meta name="description" content="Web3风格的AI聊天界面 - 体验未来的对话" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            animation: {
+              'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'ping': 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite',
+              'spin': 'spin 1s linear infinite',
+            },
+            colors: {
+              purple: {
+                400: '#a855f7',
+                500: '#9333ea',
+                600: '#7c3aed',
+                900: '#581c87'
+              },
+              cyan: {
+                400: '#22d3ee',
+                500: '#06b6d4',
+                600: '#0891b2'
+              },
+              pink: {
+                400: '#f472b6',
+                500: '#ec4899',
+                600: '#db2777'
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <title>Web3 AI Chat - 未来对话界面</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>
