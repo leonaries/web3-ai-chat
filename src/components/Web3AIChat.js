@@ -1,8 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Zap, Cpu, Brain } from 'lucide-react';
+import { Send, Bot, User, Zap, Cpu, Brain, AlertCircle } from 'lucide-react';
+import { useChat } from '../hooks/useChat';
 
 const Web3AIChat = () => {
-  const [messages, setMessages] = useState([
+  const {
+    sessionId,
+    chatHistory,
+    sendMessage,
+    initializeSession,
+    loading,
+    historyLoading
+  } = useChat();
+
+  const [inputValue, setInputValue] = useState('');
+  const [error, setError] = useState(null);
+  const messagesEndRef = useRef(null);
+
+  // 初始化时创建一个默认欢迎消息，如果没有历史记录的话
+  const [localMessages, setLocalMessages] = useState([
     {
       id: '1',
       content: '你好！我是你的AI助手，准备好探索数字未来了吗？',
@@ -10,9 +25,9 @@ const Web3AIChat = () => {
       timestamp: new Date(),
     },
   ]);
-  const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef(null);
+
+  // 合并本地消息和远程聊天历史
+  const messages = chatHistory.length > 0 ? chatHistory : localMessages;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -22,42 +37,32 @@ const Web3AIChat = () => {
     scrollToBottom();
   }, [messages]);
 
-  const simulateAIResponse = (userMessage) => {
-    const responses = [
-      '这是一个很有趣的问题！让我来分析一下...',
-      '在Web3的世界中，这个概念确实具有革命性的意义。',
-      '我理解你的观点，让我们深入探讨一下这个话题。',
-      '从区块链的角度来看，这种想法可能会带来全新的可能性。',
-      '你提出了一个非常前瞻性的观点，让我为你详细解释。',
-    ];
-    return responses[Math.floor(Math.random() * responses.length)];
-  };
+  // 初始化会话
+  useEffect(() => {
+    initializeSession();
+  }, [initializeSession]);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || loading) return;
 
-    const userMessage = {
-      id: Date.now().toString(),
-      content: inputValue,
-      isUser: true,
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const messageContent = inputValue.trim();
     setInputValue('');
-    setIsLoading(true);
+    setError(null);
 
-    // 模拟AI响应延迟
-    setTimeout(() => {
-      const aiResponse = {
-        id: (Date.now() + 1).toString(),
-        content: simulateAIResponse(userMessage.content),
-        isUser: false,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, aiResponse]);
-      setIsLoading(false);
-    }, 1500);
+    try {
+      const result = await sendMessage(messageContent);
+      
+      if (!result.success) {
+        setError(result.error || '发送消息失败，请重试');
+        // 恢复输入值
+        setInputValue(messageContent);
+      }
+    } catch (err) {
+      console.error('Send message error:', err);
+      setError('网络连接错误，请检查您的网络连接');
+      // 恢复输入值
+      setInputValue(messageContent);
+    }
   };
 
   const handleKeyPress = (e) => {
@@ -97,8 +102,10 @@ const Web3AIChat = () => {
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            <span className="text-sm text-green-400">在线</span>
+            <div className={`w-2 h-2 rounded-full ${sessionId ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`}></div>
+            <span className={`text-sm ${sessionId ? 'text-green-400' : 'text-yellow-400'}`}>
+              {sessionId ? '在线' : '连接中...'}
+            </span>
           </div>
         </div>
 
@@ -150,7 +157,7 @@ const Web3AIChat = () => {
           ))}
 
           {/* 加载指示器 */}
-          {isLoading && (
+          {loading && (
             <div className="flex items-start space-x-3">
               <div className="p-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500">
                 <Bot className="w-5 h-5 text-white" />
@@ -160,6 +167,24 @@ const Web3AIChat = () => {
                   <Cpu className="w-4 h-4 text-purple-400 animate-spin" />
                   <span className="text-gray-300 text-sm">正在思考...</span>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* 错误提示 */}
+          {error && (
+            <div className="flex items-start space-x-3">
+              <div className="p-2 rounded-full bg-red-500">
+                <AlertCircle className="w-5 h-5 text-white" />
+              </div>
+              <div className="max-w-xs px-4 py-3 rounded-2xl bg-red-600 bg-opacity-20 border border-red-500 border-opacity-30 backdrop-blur-sm">
+                <p className="text-red-200 text-sm">{error}</p>
+                <button 
+                  onClick={() => setError(null)}
+                  className="text-xs text-red-300 mt-1 hover:text-red-100 transition-colors"
+                >
+                  关闭
+                </button>
               </div>
             </div>
           )}
@@ -186,13 +211,13 @@ const Web3AIChat = () => {
             </div>
             <button
               onClick={handleSendMessage}
-              disabled={!inputValue.trim() || isLoading}
+              disabled={!inputValue.trim() || loading || !sessionId}
               className="p-3 rounded-xl bg-gradient-to-r from-purple-500 to-cyan-500 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all duration-200 hover:scale-105"
               style={{
                 boxShadow: '0 10px 25px rgba(147, 51, 234, 0.25)'
               }}
             >
-              {isLoading ? (
+              {loading ? (
                 <Zap className="w-5 h-5 animate-pulse" />
               ) : (
                 <Send className="w-5 h-5" />
