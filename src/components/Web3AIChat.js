@@ -8,8 +8,8 @@ const Web3AIChat = () => {
     chatHistory,
     sendMessage,
     initializeSession,
-    loading,
-    historyLoading
+    loading
+    // historyLoading - removed unused variable
   } = useChat();
 
   const [inputValue, setInputValue] = useState('');
@@ -17,7 +17,7 @@ const Web3AIChat = () => {
   const messagesEndRef = useRef(null);
 
   // 初始化时创建一个默认欢迎消息，如果没有历史记录的话
-  const [localMessages, setLocalMessages] = useState([
+  const [localMessages] = useState([
     {
       id: '1',
       content: '你好！我是你的AI助手，准备好探索数字未来了吗？',
@@ -25,6 +25,7 @@ const Web3AIChat = () => {
       timestamp: new Date(),
     },
   ]);
+  // setLocalMessages - removed unused setter
 
   // 合并本地消息和远程聊天历史
   const messages = chatHistory.length > 0 ? chatHistory : localMessages;
