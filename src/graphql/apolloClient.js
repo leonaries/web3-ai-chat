@@ -3,8 +3,8 @@ import { setContext } from '@apollo/client/link/context';
 import { onError } from '@apollo/client/link/error';
 
 // TODO: 更换为你的 Cloudflare Workers GraphQL 端点
-// const GRAPHQL_ENDPOINT = 'https://openai-workers.leonaries9527.workers.dev/graphql';
-const GRAPHQL_ENDPOINT = 'http://localhost:8787/graphql';
+const GRAPHQL_ENDPOINT = 'https://openai-workers.leonaries9527.workers.dev/graphql';
+// const GRAPHQL_ENDPOINT = 'http://localhost:8787/graphql';
 
 
 // HTTP 链接配置

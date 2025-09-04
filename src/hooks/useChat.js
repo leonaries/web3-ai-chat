@@ -1,71 +1,100 @@
 import { useState, useCallback } from 'react';
-import { useMutation, useQuery } from '@apollo/client/react';
-import { SEND_MESSAGE, GET_AI_RESPONSE, GET_CHAT_HISTORY, CREATE_SESSION } from '../graphql/queries';
+
+// Workers API 端点
+const WORKERS_API = 'https://openai-workers.leonaries9527.workers.dev';
 
 export const useChat = () => {
   const [sessionId, setSessionId] = useState(null);
+  const [chatHistory, setChatHistory] = useState([
+    {
+      id: '1',
+      content: '你好！我是你的AI助手，准备好探索数字未来了吗？',
+      isUser: false,
+      timestamp: new Date(),
+    },
+  ]);
   
-  // 创建会话
-  const [createSession] = useMutation(CREATE_SESSION, {
-    onCompleted: (data) => {
-      if (data.createSession.success) {
-        setSessionId(data.createSession.sessionId);
-      }
-    }
-  });
-
-  // 获取聊天历史
-  const { data: chatHistoryData, loading: historyLoading } = useQuery(GET_CHAT_HISTORY, {
-    variables: { sessionId },
-    skip: !sessionId,
-    fetchPolicy: 'cache-and-network'
-  });
-
-  // 发送消息
-  const [sendMessageMutation, { loading: sendingMessage }] = useMutation(SEND_MESSAGE);
-
-  // 获取AI响应
-  const [getAIResponseMutation, { loading: gettingAIResponse }] = useMutation(GET_AI_RESPONSE);
+  // 创建会话（本地生成 sessionId）
+  const createSession = useCallback(async () => {
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setSessionId(newSessionId);
+    return { success: true, sessionId: newSessionId };
+  }, []);
 
   // 发送消息并获取AI响应
   const sendMessage = useCallback(async (messageContent) => {
     try {
-      // 首先发送用户消息
-      const userMessageResult = await sendMessageMutation({
-        variables: {
-          input: {
-            content: messageContent,
-            isUser: true,
-            sessionId
-          }
-        }
+      // 添加用户消息到本地历史
+      const userMessage = {
+        id: `msg_${Date.now()}_user`,
+        content: messageContent,
+        isUser: true,
+        timestamp: new Date(),
+      };
+      
+      setChatHistory(prev => [...prev, userMessage]);
+
+      // 准备发送给 Workers 的消息格式
+      const messages = [
+        ...chatHistory.map(msg => ({
+          role: msg.isUser ? 'user' : 'assistant',
+          content: msg.content
+        })),
+        { role: 'user', content: messageContent }
+      ];
+
+      // 调用 Workers API
+      const response = await fetch(WORKERS_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: messages,
+          model: 'gpt-3.5-turbo',
+          temperature: 0.7,
+          max_tokens: 1000,
+          stream: false
+        }),
       });
 
-      if (userMessageResult.data?.sendMessage?.success) {
-        // 然后获取AI响应
-        const aiResponseResult = await getAIResponseMutation({
-          variables: {
-            input: {
-              message: messageContent,
-              sessionId,
-              context: chatHistoryData?.chatHistory || []
-            }
-          }
-        });
-
-        return {
-          userMessage: userMessageResult.data.sendMessage,
-          aiResponse: aiResponseResult.data?.getAIResponse,
-          success: true
-        };
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      return { success: false, error: userMessageResult.data?.sendMessage?.error };
+      const aiResponse = await response.json();
+      
+      // 添加AI响应到本地历史
+      const aiMessage = {
+        id: `msg_${Date.now()}_ai`,
+        content: aiResponse.choices?.[0]?.message?.content || '抱歉，我没有收到有效的回复',
+        isUser: false,
+        timestamp: new Date(),
+      };
+      
+      setChatHistory(prev => [...prev, aiMessage]);
+
+      return {
+        userMessage,
+        aiResponse: aiMessage,
+        success: true
+      };
     } catch (error) {
       console.error('Error sending message:', error);
+      
+      // 添加错误消息到历史
+      const errorMessage = {
+        id: `msg_${Date.now()}_error`,
+        content: '抱歉，发生了错误，请重试',
+        isUser: false,
+        timestamp: new Date(),
+      };
+      
+      setChatHistory(prev => [...prev, errorMessage]);
+      
       return { success: false, error: error.message };
     }
-  }, [sendMessageMutation, getAIResponseMutation, sessionId, chatHistoryData]);
+  }, [chatHistory]);
 
   // 初始化会话
   const initializeSession = useCallback(async () => {
@@ -76,10 +105,10 @@ export const useChat = () => {
 
   return {
     sessionId,
-    chatHistory: chatHistoryData?.chatHistory || [],
+    chatHistory,
     sendMessage,
     initializeSession,
-    loading: sendingMessage || gettingAIResponse,
-    historyLoading
+    loading: false, // 简化状态管理
+    historyLoading: false
   };
 };
