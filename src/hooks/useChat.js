@@ -1,7 +1,10 @@
 import { useState, useCallback } from 'react';
 
-// GraphQL端点
-const GRAPHQL_ENDPOINT = 'https://openai-workers-proxy.leonaries9527.workers.dev/graphql';
+// GraphQL端点配置
+const isDevelopment = process.env.NODE_ENV === 'development';
+const GRAPHQL_ENDPOINT = isDevelopment 
+  ? 'http://localhost:8787/graphql'  // 本地开发
+  : 'https://openai-workers-proxy.leonaries9527.workers.dev/graphql'; // 生产环境
 
 export const useChat = () => {
   const [sessionId, setSessionId] = useState(null);
@@ -17,28 +20,49 @@ export const useChat = () => {
 
   // GraphQL请求辅助函数
   const graphqlRequest = useCallback(async (query, variables = {}) => {
-    const response = await fetch(GRAPHQL_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        variables
-      }),
+    console.log('GraphQL Request:', { 
+      endpoint: GRAPHQL_ENDPOINT,
+      query: query.slice(0, 100) + '...',
+      variables 
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+    try {
+      const response = await fetch(GRAPHQL_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // 本地开发时可以添加 API key 头部
+          ...(isDevelopment && process.env.REACT_APP_OPENAI_API_KEY ? {
+            'x-openai-key': process.env.REACT_APP_OPENAI_API_KEY
+          } : {})
+        },
+        body: JSON.stringify({
+          query,
+          variables
+        }),
+      });
 
-    const result = await response.json();
-    
-    if (result.errors && result.errors.length > 0) {
-      throw new Error(result.errors[0].message);
-    }
+      console.log('GraphQL Response Status:', response.status);
 
-    return result.data;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('GraphQL HTTP Error:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('GraphQL Response:', result);
+      
+      if (result.errors && result.errors.length > 0) {
+        console.error('GraphQL Errors:', result.errors);
+        throw new Error(result.errors[0].message);
+      }
+
+      return result.data;
+    } catch (error) {
+      console.error('GraphQL Request Failed:', error);
+      throw error;
+    }
   }, []);
 
   // 创建会话
@@ -57,6 +81,7 @@ export const useChat = () => {
       
       if (data?.createSession?.success) {
         setSessionId(data.createSession.sessionId);
+        console.log('Session created:', data.createSession.sessionId);
         return { success: true, sessionId: data.createSession.sessionId };
       }
       throw new Error('Failed to create session');
@@ -65,6 +90,7 @@ export const useChat = () => {
       // 降级处理：本地生成sessionId
       const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       setSessionId(newSessionId);
+      console.log('Fallback session created:', newSessionId);
       return { success: true, sessionId: newSessionId };
     }
   }, [graphqlRequest]);
@@ -72,6 +98,7 @@ export const useChat = () => {
   // 发送消息并获取AI响应
   const sendMessage = useCallback(async (messageContent) => {
     if (!sessionId) {
+      console.error('No active session');
       return { success: false, error: 'No active session' };
     }
 
@@ -98,6 +125,8 @@ export const useChat = () => {
           })),
         { role: 'user', content: messageContent }
       ];
+
+      console.log('Sending messages to AI:', messages);
 
       // 3. 调用AI响应GraphQL API
       const query = `
@@ -132,6 +161,8 @@ export const useChat = () => {
         
         setChatHistory(prev => [...prev, aiMessage]);
         
+        console.log('AI response received:', aiMessage);
+        
         return {
           userMessage,
           aiResponse: aiMessage,
@@ -147,7 +178,7 @@ export const useChat = () => {
       // 添加错误消息到历史
       const errorMessage = {
         id: `msg_${Date.now()}_error`,
-        content: '抱歉，发生了错误，请重试',
+        content: `抱歉，发生了错误: ${error.message}`,
         isUser: false,
         timestamp: new Date(),
       };
@@ -163,6 +194,7 @@ export const useChat = () => {
   // 初始化会话
   const initializeSession = useCallback(async () => {
     if (!sessionId) {
+      console.log('Initializing session...');
       await createSession();
     }
   }, [createSession, sessionId]);
