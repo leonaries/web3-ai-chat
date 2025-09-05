@@ -28,7 +28,7 @@ export const GET_CHAT_HISTORY = gql`
 
 // 获取 AI 响应的 Mutation
 export const GET_AI_RESPONSE = gql`
-  mutation GetAIResponse($input: AIRequestInput!) {
+  mutation GetAIResponse($input: ChatInput!) {
     getAIResponse(input: $input) {
       id
       content

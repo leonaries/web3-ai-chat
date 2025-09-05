@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 
-// Workers API 端点
-const WORKERS_API = 'https://openai-workers.leonaries9527.workers.dev';
+// GraphQL端点
+const GRAPHQL_ENDPOINT = 'https://openai-workers-proxy.leonaries9527.workers.dev/graphql';
 
 export const useChat = () => {
   const [sessionId, setSessionId] = useState(null);
@@ -13,18 +13,72 @@ export const useChat = () => {
       timestamp: new Date(),
     },
   ]);
-  
-  // 创建会话（本地生成 sessionId）
-  const createSession = useCallback(async () => {
-    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    setSessionId(newSessionId);
-    return { success: true, sessionId: newSessionId };
+  const [loading, setLoading] = useState(false);
+
+  // GraphQL请求辅助函数
+  const graphqlRequest = useCallback(async (query, variables = {}) => {
+    const response = await fetch(GRAPHQL_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        variables
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    if (result.errors && result.errors.length > 0) {
+      throw new Error(result.errors[0].message);
+    }
+
+    return result.data;
   }, []);
+
+  // 创建会话
+  const createSession = useCallback(async () => {
+    try {
+      const query = `
+        mutation CreateSession {
+          createSession {
+            sessionId
+            success
+          }
+        }
+      `;
+      
+      const data = await graphqlRequest(query);
+      
+      if (data?.createSession?.success) {
+        setSessionId(data.createSession.sessionId);
+        return { success: true, sessionId: data.createSession.sessionId };
+      }
+      throw new Error('Failed to create session');
+    } catch (error) {
+      console.error('Error creating session:', error);
+      // 降级处理：本地生成sessionId
+      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      setSessionId(newSessionId);
+      return { success: true, sessionId: newSessionId };
+    }
+  }, [graphqlRequest]);
 
   // 发送消息并获取AI响应
   const sendMessage = useCallback(async (messageContent) => {
+    if (!sessionId) {
+      return { success: false, error: 'No active session' };
+    }
+
+    setLoading(true);
+    
     try {
-      // 添加用户消息到本地历史
+      // 1. 添加用户消息到本地历史(乐观更新)
       const userMessage = {
         id: `msg_${Date.now()}_user`,
         content: messageContent,
@@ -34,51 +88,59 @@ export const useChat = () => {
       
       setChatHistory(prev => [...prev, userMessage]);
 
-      // 准备发送给 Workers 的消息格式
+      // 2. 准备AI请求的消息格式
       const messages = [
-        ...chatHistory.map(msg => ({
-          role: msg.isUser ? 'user' : 'assistant',
-          content: msg.content
-        })),
+        ...chatHistory
+          .filter(msg => msg.id !== '1') // 排除默认欢迎消息
+          .map(msg => ({
+            role: msg.isUser ? 'user' : 'assistant',
+            content: msg.content
+          })),
         { role: 'user', content: messageContent }
       ];
 
-      // 调用 Workers API
-      const response = await fetch(WORKERS_API, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      // 3. 调用AI响应GraphQL API
+      const query = `
+        mutation GetAIResponse($input: ChatInput!) {
+          getAIResponse(input: $input) {
+            id
+            content
+            isUser
+            timestamp
+            success
+            error
+          }
+        }
+      `;
+
+      const data = await graphqlRequest(query, {
+        input: {
           messages: messages,
           model: 'gpt-3.5-turbo',
           temperature: 0.7,
-          max_tokens: 1000,
-          stream: false
-        }),
+          max_tokens: 1000
+        }
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (data?.getAIResponse?.success) {
+        const aiMessage = {
+          id: data.getAIResponse.id,
+          content: data.getAIResponse.content,
+          isUser: false,
+          timestamp: new Date(data.getAIResponse.timestamp),
+        };
+        
+        setChatHistory(prev => [...prev, aiMessage]);
+        
+        return {
+          userMessage,
+          aiResponse: aiMessage,
+          success: true
+        };
+      } else {
+        throw new Error(data?.getAIResponse?.error || 'AI response failed');
       }
 
-      const aiResponse = await response.json();
-      
-      // 添加AI响应到本地历史
-      const aiMessage = {
-        id: `msg_${Date.now()}_ai`,
-        content: aiResponse.choices?.[0]?.message?.content || '抱歉，我没有收到有效的回复',
-        isUser: false,
-        timestamp: new Date(),
-      };
-      
-      setChatHistory(prev => [...prev, aiMessage]);
-
-      return {
-        userMessage,
-        aiResponse: aiMessage,
-        success: true
-      };
     } catch (error) {
       console.error('Error sending message:', error);
       
@@ -93,8 +155,10 @@ export const useChat = () => {
       setChatHistory(prev => [...prev, errorMessage]);
       
       return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
     }
-  }, [chatHistory]);
+  }, [sessionId, chatHistory, graphqlRequest]);
 
   // 初始化会话
   const initializeSession = useCallback(async () => {
@@ -108,7 +172,7 @@ export const useChat = () => {
     chatHistory,
     sendMessage,
     initializeSession,
-    loading: false, // 简化状态管理
+    loading,
     historyLoading: false
   };
 };
