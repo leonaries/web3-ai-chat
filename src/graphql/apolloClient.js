@@ -8,7 +8,7 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 // GraphQL 端点配置
 const GRAPHQL_ENDPOINT = isDevelopment 
   ? 'http://localhost:8787/graphql'  // 本地开发
-  : 'https://openai-workers-proxy.leonaries9527.workers.dev/graphql'; // 生产环境
+  : 'https://openai-workers.leonaries9527.workers.dev/graphql'; // 生产环境
 
 console.log('Apollo Client connecting to:', GRAPHQL_ENDPOINT);
 
