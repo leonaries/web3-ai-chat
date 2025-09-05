@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 const isDevelopment = process.env.NODE_ENV === 'development';
 const GRAPHQL_ENDPOINT = isDevelopment 
   ? 'http://localhost:8787/graphql'  // 本地开发
-  : 'https://openai-workers-proxy.leonaries9527.workers.dev/graphql'; // 生产环境
+  : 'https://openai-workers.leonaries9527.workers.dev/graphql'; // 生产环境
 
 export const useChat = () => {
   const [sessionId, setSessionId] = useState(null);
